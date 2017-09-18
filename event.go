@@ -1,7 +1,6 @@
 package event
 
 import (
-	"bytes"
 	"fmt"
 	"unicode"
 )
@@ -18,7 +17,7 @@ type Editor interface {
 type Record interface {
 	String() string
 	//	Equal(Record) bool
-	Coalesce(Record) bool
+	Coalesce(Record) Record
 	//	Invert(Record) Record
 }
 
@@ -66,43 +65,50 @@ func space(b byte) int {
 	return 0
 }
 
-func (e *Insert) Coalesce(v Record) bool {
+func (e *Insert) Coalesce(v Record) Record {
 	if v == nil {
-		return false
+		return nil
 	}
 	switch v := v.(type) {
 	case *Insert:
 		if len(v.P) == 0 {
-			return true
+			return v
 		}
 		if v.ID != e.ID {
-			return false
+			return nil
 		}
 		if space(v.P[0]) != space(e.P[0]) {
-			return false
+			return nil
 		}
-		if v.Q0 == e.Q1 {
+		if v.Q0 == e.Q0 {
+			panic("!")
 			e.Q1 = v.Q1
 			e.P = append(e.P, v.P...)
-			return true
+			return e
 		}
 	case *Delete:
 		if v.ID != e.ID {
-			return false
+			return nil
+		}
+		if e.Q0 == v.Q0 && e.Q1 == v.Q1 {
+			// EXPERIMENT
+			e.Kind = 'w'
+			//e.P = v.P
+			return &Write{Rec: e.Rec}
 		}
 		if len(v.P) == 1 && len(e.P) == 1 && (space(v.P[0]) != space(e.P[0])) {
-			return false
+			return nil
 		}
 		if e.Q0 >= v.Q0 && v.Q1 == e.Q1-1 {
 			// 0      3        3       4
 			e.Q1 -= v.Q1 - v.Q0
 			e.P = e.P[:min(int64(len(e.P)), e.Q1)]
-			return true
+			return e
 		}
 	case *Select:
-		return false
+		return nil
 	}
-	return false
+	return nil
 }
 
 func min(a, b int64) int64 {
@@ -112,50 +118,64 @@ func min(a, b int64) int64 {
 	return b
 }
 
-func (e *Delete) Coalesce(v Record) bool {
+func (e *Delete) Coalesce(v Record) Record {
 	switch v := v.(type) {
 	case *Insert:
-		return false
-		// Works better to just return false here
-		//
-		//
-		if v.ID != e.ID {
-			return false
+		if e.Q0 == v.Q0 && e.Q1 == v.Q1 {
+			e.Kind = 'w'
+			e.P = v.P
+			return &Write{Rec: e.Rec}
+		} else if e.Q0 == v.Q0 && e.Q1 < v.Q1 {
+			e.Kind = 'w'
+			split := int64(len(v.P)) + (e.Q1 - v.Q1)
+			e.P = v.P[:split]
+			return &Write{Rec: e.Rec,
+				Residue: &Insert{
+					Rec: Rec{
+						Q0:   v.Q0 + (e.Q1 - e.Q0),
+						Q1:   v.Q1,
+						Kind: 'i',
+						P:    v.P[split:],
+					},
+				},
+			}
+		} else {
+			d0, d1 := e.Q1, v.Q1
+			e.Kind = 'w'
+			e.P = v.P
+			e.Q1 = v.Q1
+			return &Write{
+				Rec: e.Rec,
+				Residue: &Delete{
+					Rec: Rec{
+						Kind: 'd',
+						Q0:   d1,
+						Q1:   d0,
+					},
+				},
+			}
 		}
-		if v.Q0 != e.Q0 {
-			return false
-		}
-		if v.Q1 > e.Q1+1 {
-			return false
-		}
-		e.Q0 = v.Q1
-		if len(e.P) == 0 || bytes.Equal(e.P[:e.Q0], v.P) {
-			return false
-		}
-		copy(e.P, e.P[e.Q0:])
-		e.P = e.P[:(e.Q1-e.Q0)+1]
-		return true
 	case *Delete:
 		if v.ID != e.ID {
-			return false
+			return nil
 		}
-		if e.Q0 != v.Q1 {
-			return false
+		if e.Q1 != v.Q0 {
+			return nil
 		}
-		e.Q0 = v.Q0
+		e.Q1 = v.Q1
 		e.P = append(v.P, e.P...)
-		return true
+		return e
 	}
-	return false
+	return nil
 }
-func (e *Select) Coalesce(v Record) bool {
+func (e *Select) Coalesce(v Record) Record {
 	switch v := v.(type) {
 	case *Select:
 		if v.Q0 == e.Q0 && v.Q1 == e.Q1 {
-			return true
+			return e
 		}
 	}
-	return false
+	return nil
 }
 
 type Delete struct {
@@ -206,6 +226,7 @@ type Put struct {
 func (Look) isevent()      {}
 func (Cmd) isevent()       {}
 func (Insert) isevent()    {}
+func (Write) isevent()     {}
 func (Delete) isevent()    {}
 func (Select) isevent()    {}
 func (SetOrigin) isevent() {}
