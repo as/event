@@ -3,6 +3,7 @@ package event
 import (
 	"fmt"
 	"unicode"
+	"github.com/as/path"
 )
 
 type Editor interface {
@@ -201,15 +202,15 @@ type Move struct {
 }
 type Cmd struct {
 	Rec
-	From     Editor
-	To       []Editor
-	FromFile string
+	From Editor
+	To   []Editor
+	Path path.Path
 }
 type Look struct {
 	Rec
-	From     Editor
-	To       []Editor
-	FromFile string
+	From  Editor
+	To    []Editor
+	Path  path.Path
 }
 
 type Get struct {
