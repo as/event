@@ -12,6 +12,7 @@ type Editor interface {
 	Bytes() []byte
 	Select(q0, q1 int64)
 	Dot() (q0, q1 int64)
+	Close() error
 }
 
 type Record interface {
