@@ -12,6 +12,7 @@ type Editor interface {
 	Bytes() []byte
 	Select(q0, q1 int64)
 	Dot() (q0, q1 int64)
+	Write(p []byte) (n int, err error)
 	Close() error
 }
 
@@ -82,7 +83,6 @@ func (e *Insert) Coalesce(v Record) Record {
 			return nil
 		}
 		if v.Q0 == e.Q0 {
-			panic("!")
 			e.Q1 = v.Q1
 			e.P = append(e.P, v.P...)
 			return e
